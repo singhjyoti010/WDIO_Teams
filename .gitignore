@@ -1,0 +1,12 @@
+node_modules
+.vs
+.env
+*results*/
+*report*/
+.vscode
+*.zip
+allure-report/
+logs/
+T1-desktop-pipelines
+T1-web-pipelines
+T2.1-web-pipelines
