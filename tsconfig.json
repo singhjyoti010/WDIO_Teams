@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "moduleResolution": "node",
+        "module": "ES2022",
+        "types": [
+            "node",
+            "@wdio/globals/types",
+            "expect-webdriverio",
+            "@wdio/mocha-framework",
+        ],
+        "noEmit": true,
+        "allowImportingTsExtensions": true,
+        "esModuleInterop": true,
+        "target": "es2022"
+    }
+}
