@@ -1,0 +1,123 @@
+trigger:
+- none
+
+schedules:
+  - cron: 30 18 * * *
+    displayName: "Run at 00:00 IST"
+    branches:
+      include:
+        - main
+    always: true
+    
+pool:
+  name: AgentPool-OnPrem  
+
+jobs:
+  - job: MSTeamsAppTesting_BIM
+    timeoutInMinutes: 0
+    displayName: BIM Windows Desktop on channel and chat
+
+    steps:
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            # URL to download latest MS Teams client 
+            $NewTeamsDownloadUrl="https://statics.teams.cdn.office.net/production-windows-x64/enterprise/webview2/lkg/MSTeams-x64.msix"  #the url for downloading teams classic
+            
+            #Edge Webview2 Runtime Download URL
+            
+            $EdgeWebView2DownloadURL = "https://go.microsoft.com/fwlink/?linkid=2124701"
+            
+            # Cache Dir for 
+            $NewTeamsCacheDir="$($env:USERPROFILE)\appdata\local\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams"
+            
+            # Download folder
+            $download_dir = "C:\MSTeamsDownloads\"
+            
+            # Download File Path
+            $MSTeamsPackagepath = "$download_dir\MSTeams-Latest.msix"
+            
+            $WebViewRuntimePath = "$download_dir\Webview2Runtime.exe"
+            
+            # Stop Teams Client if running already
+            Get-Process -Name "ms-teams*" | Stop-Process -Force
+            
+            if(-not $(Test-Path $download_dir)){
+                New-Item -ItemType Directory -Path $download_dir
+            }
+            else {
+                # Get all the files in TeamsDownload folder and delete them
+                Get-ChildItem -Path $download_dir -File | ForEach-Object {$_.Delete()}
+            }
+            
+            if($(Test-Path $NewTeamsCacheDir)){
+                
+                #Remove Teams Client Cache
+                Get-Item $NewTeamsCacheDir | Remove-Item -Recurse -Force
+            }
+            
+            # Uninstall MS Teams completely
+            Get-AppxPackage | ? {$_.Name -like "*Teams*"} | Remove-AppxPackage
+            
+            
+            # Download the latest MS Teams Build
+            Invoke-WebRequest -Uri $NewTeamsDownloadUrl -OutFile $MSTeamsPackagepath
+            
+            # Download Edge WEbview2 Runtime
+            Invoke-WebRequest -Uri  $EdgeWebView2DownloadURL -OutFile $WebViewRuntimePath
+            
+            # Install and update runtime
+            Start-Process -FilePath $WebViewRuntimePath -ArgumentList "/silent /install" -ErrorAction Stop
+            
+            # install ms teams
+            Add-AppPackage -Path $MSTeamsPackagepath
+        displayName: 'Install latest MS Teams App and Webview2 Runtime'
+
+      - task: NodeTool@0
+        inputs:
+          versionSource: 'spec'
+          versionSpec: '18.x'
+        displayName: 'Install Node.js'
+     
+      - task: CmdLine@2
+        inputs:
+         script: 'npm install'
+        displayName: 'installing npm packages'
+
+      - task: PowerShell@2
+        displayName: 'Running PreTest Script'
+        inputs:
+          filePath: '$(System.DefaultWorkingDirectory)/helpers/setuphelpers/PreTest.ps1'
+      - task: CmdLine@2
+        inputs:
+          script: 'npm run wdio-electron'
+        displayName: 'Running TCs'
+        continueOnError: true        
+      
+      - task: PowerShell@2
+        displayName: 'Running AfterTest Script'
+        inputs:
+          filePath: '$(System.DefaultWorkingDirectory)/helpers/setuphelpers/AfterTest.ps1'
+      - task: CopyFiles@2
+        inputs:
+          SourceFolder: '$(System.DefaultWorkingDirectory)/reports'
+          Contents: 'BIM-TestResults.zip'
+          TargetFolder: '$(build.artifactstagingdirectory)'
+          CleanTargetFolder: true
+        displayName: 'Copy files to artifact staging directory'
+          
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: '$(build.artifactstagingdirectory)'
+          ArtifactName: 'MSTeamsAppsTesting-TestResults'
+          publishLocation: 'Container'
+        displayName: 'Publish Artifacts'
+      
+      - task: PublishTestResults@2
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '$(System.DefaultWorkingDirectory)/reports/test-results/*.xml'
+          mergeTestResults: true
+          testRunTitle: 'BIM Desktop Automation Test Results'
+        displayName: 'Publish Test Results'
